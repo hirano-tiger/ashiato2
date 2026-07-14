@@ -10,489 +10,47 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="あしあと">
 <link rel="manifest" href="manifest.json">
-<link rel="icon" href="icons/favicon-32.png">
-<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" href="favicon-32.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-</head>
-<body>
-<div id="root"></div>
-<script type="text/babel" data-presets="env,react">
-const { useState, useEffect, useRef, useCallback } = React;
-
-const IconCamera = (p) => <svg width={p.size||18} height={p.size||18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 8h3l2-3h6l2 3h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="14" r="3.3"/></svg>;
-const IconMap = (p) => <svg width={p.size||18} height={p.size||18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2z"/><path d="M9 4v14M15 6v14"/></svg>;
-const IconList = (p) => <svg width={p.size||18} height={p.size||18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>;
-const IconPlus = (p) => <svg width={p.size||18} height={p.size||18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>;
-const IconPlay = (p) => <svg width={p.size||9} height={p.size||9} viewBox="0 0 24 24" fill={p.fill||"currentColor"}><polygon points="5,3 19,12 5,21"/></svg>;
-const IconChevronLeft = (p) => <svg width={p.size||16} height={p.size||16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>;
-const IconRotate = (p) => <svg width={p.size||11} height={p.size||11} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-9.36L1 10"/></svg>;
-
-const RECORD_DURATION = 3000;
-const HOLD_THRESHOLD = 320;
-const RING_C = 2 * Math.PI * 30;
-
-const seedItems = [
-  { id: "seed1", type: "photo", src: "https://picsum.photos/seed/oki1/400/400", videoUrl: null, duration: 0,
-    lat: 26.4200, lng: 127.7400, ts: new Date("2026-08-10T10:15:00"), tags: ["沖縄旅行"], mocked: true },
-  { id: "seed2", type: "video", src: "https://picsum.photos/seed/oki2/400/400", videoUrl: null, duration: 3,
-    lat: 26.3820, lng: 127.7900, ts: new Date("2026-08-11T13:40:00"), tags: ["沖縄旅行"], mocked: true, simulated: true },
-  { id: "seed3", type: "photo", src: "https://picsum.photos/seed/oki3/400/400", videoUrl: null, duration: 0,
-    lat: 26.3500, lng: 127.8620, ts: new Date("2026-08-12T09:05:00"), tags: ["沖縄旅行"], mocked: true },
-  { id: "seed4", type: "photo", src: "https://picsum.photos/seed/date1/400/400", videoUrl: null, duration: 0,
-    lat: 26.2120, lng: 127.6800, ts: new Date("2026-08-20T18:30:00"), tags: ["8月デート"], mocked: true },
-];
-
-function pad(n) { return n.toString().padStart(2, "0"); }
-function fmtDateTime(d) {
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-function fmtDateShort(d) { return `${pad(d.getMonth() + 1)}.${pad(d.getDate())}`; }
-
-function App() {
-  const [screen, setScreen] = useState("camera");
-  const [items, setItems] = useState(seedItems);
-  const [allTags, setAllTags] = useState(["沖縄旅行", "8月デート"]);
-  const [pending, setPending] = useState(null);
-  const [streamOk, setStreamOk] = useState(false);
-  const [isRecording, setIsRecording] = useState(false);
-  const [recordProgress, setRecordProgress] = useState(0);
-  const [lastLoc, setLastLoc] = useState({ lat: 26.4500, lng: 127.7600, accuracy: null, mocked: true });
-  const [filteredTags, setFilteredTags] = useState([]);
-  const [selectedId, setSelectedId] = useState(null);
-  const [showAddInput, setShowAddInput] = useState(false);
-  const [newTagText, setNewTagText] = useState("");
-
-  const videoRef = useRef(null);
-  const canvasRef = useRef(null);
-  const streamRef = useRef(null);
-  const pressTimerRef = useRef(null);
-  const recordIntervalRef = useRef(null);
-  const recordStartRef = useRef(0);
-  const lastTagsRef = useRef([]);
-
-  useEffect(() => {
-    let cancelled = false;
-    if (screen === "camera") {
-      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-        navigator.mediaDevices
-          .getUserMedia({ video: { facingMode: "environment" }, audio: false })
-          .then((stream) => {
-            if (cancelled) { stream.getTracks().forEach((t) => t.stop()); return; }
-            streamRef.current = stream;
-            if (videoRef.current) {
-              videoRef.current.srcObject = stream;
-              videoRef.current.play().catch(() => {});
-            }
-            setStreamOk(true);
-          })
-          .catch(() => setStreamOk(false));
-      } else {
-        setStreamOk(false);
-      }
-    }
-    return () => {
-      cancelled = true;
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach((t) => t.stop());
-        streamRef.current = null;
-      }
-      setStreamOk(false);
-    };
-  }, [screen]);
-
-  const mockNearLast = useCallback(() => {
-    const jitter = () => (Math.random() - 0.5) * 0.02;
-    return { lat: lastLoc.lat + jitter(), lng: lastLoc.lng + jitter(), accuracy: 15, mocked: true };
-  }, [lastLoc]);
-
-  const fetchFreshLocation = useCallback((cb) => {
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          const loc = { lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy, mocked: false };
-          setLastLoc(loc);
-          cb(loc);
-        },
-        () => { const loc = mockNearLast(); setLastLoc(loc); cb(loc); },
-        { enableHighAccuracy: true, timeout: 4000, maximumAge: 2000 }
-      );
-    } else {
-      const loc = mockNearLast();
-      setLastLoc(loc);
-      cb(loc);
-    }
-  }, [mockNearLast]);
-
-  function capturePosterFrame() {
-    if (streamOk && videoRef.current && canvasRef.current && videoRef.current.videoWidth) {
-      const v = videoRef.current, c = canvasRef.current;
-      c.width = v.videoWidth; c.height = v.videoHeight;
-      const ctx = c.getContext("2d");
-      ctx.drawImage(v, 0, 0, c.width, c.height);
-      try { return c.toDataURL("image/jpeg", 0.85); } catch (e) {}
-    }
-    return `https://picsum.photos/seed/${Date.now()}/400/400`;
-  }
-
-  function finalizeCapture(partial) {
-    fetchFreshLocation((loc) => {
-      const item = {
-        id: "m" + Date.now() + Math.random().toString(36).slice(2, 6),
-        ts: new Date(),
-        lat: loc.lat, lng: loc.lng, mocked: loc.mocked,
-        tags: [...lastTagsRef.current],
-        ...partial,
-      };
-      setPending(item);
-      setScreen("tag");
-    });
-  }
-
-  function takePhoto() {
-    const src = capturePosterFrame();
-    finalizeCapture({ type: "photo", src, videoUrl: null, duration: 0, simulated: !streamOk });
-  }
-
-  function startRecording() {
-    setIsRecording(true);
-    setRecordProgress(0);
-    const poster = capturePosterFrame();
-    recordStartRef.current = Date.now();
-    recordIntervalRef.current = setInterval(() => {
-      const elapsed = Date.now() - recordStartRef.current;
-      setRecordProgress(Math.min(100, (elapsed / RECORD_DURATION) * 100));
-    }, 30);
-
-    let recorder = null;
-    let chunks = [];
-    if (streamOk && window.MediaRecorder && streamRef.current) {
-      try {
-        recorder = new MediaRecorder(streamRef.current);
-        recorder.ondataavailable = (e) => { if (e.data && e.data.size > 0) chunks.push(e.data); };
-        recorder.start();
-      } catch (e) { recorder = null; }
-    }
-
-    setTimeout(() => {
-      clearInterval(recordIntervalRef.current);
-      setRecordProgress(100);
-      if (recorder && recorder.state !== "inactive") {
-        recorder.onstop = () => {
-          const blob = new Blob(chunks, { type: "video/webm" });
-          const url = URL.createObjectURL(blob);
-          finalizeCapture({ type: "video", src: poster, videoUrl: url, duration: 3, simulated: false });
-        };
-        recorder.stop();
-      } else {
-        finalizeCapture({ type: "video", src: poster, videoUrl: null, duration: 3, simulated: true });
-      }
-      setIsRecording(false);
-      setTimeout(() => setRecordProgress(0), 200);
-    }, RECORD_DURATION);
-  }
-
-  function handlePointerDown(e) {
-    e.preventDefault();
-    if (isRecording || pending) return;
-    pressTimerRef.current = setTimeout(() => { pressTimerRef.current = null; startRecording(); }, HOLD_THRESHOLD);
-  }
-  function handlePointerUp() {
-    if (pressTimerRef.current) {
-      clearTimeout(pressTimerRef.current);
-      pressTimerRef.current = null;
-      if (!isRecording) takePhoto();
-    }
-  }
-
-  function toggleTag(tag) {
-    setPending((p) => p.tags.includes(tag)
-      ? { ...p, tags: p.tags.filter((t) => t !== tag) }
-      : { ...p, tags: [...p.tags, tag] });
-  }
-  function commitNewTag() {
-    const t = newTagText.trim();
-    if (t) {
-      setAllTags((prev) => (prev.includes(t) ? prev : [...prev, t]));
-      setPending((p) => ({ ...p, tags: p.tags.includes(t) ? p.tags : [...p.tags, t] }));
-    }
-    setNewTagText(""); setShowAddInput(false);
-  }
-  function savePending() {
-    lastTagsRef.current = pending.tags;
-    setItems((prev) => [...prev, pending]);
-    setPending(null);
-    setScreen("map");
-  }
-  function discardPending() {
-    if (pending && pending.videoUrl) URL.revokeObjectURL(pending.videoUrl);
-    setPending(null);
-    setScreen("camera");
-  }
-
-  function toggleFilterTag(tag) {
-    setFilteredTags((prev) => prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]);
-    setSelectedId(null);
-  }
-
-  function resetDemo() {
-    setItems(seedItems); setAllTags(["沖縄旅行", "8月デート"]);
-    setFilteredTags([]); setSelectedId(null); setPending(null); setScreen("camera");
-  }
-
-  const filtered = items.filter((it) => filteredTags.length === 0 || it.tags.some((t) => filteredTags.includes(t)));
-  const sorted = [...filtered].sort((a, b) => a.ts - b.ts);
-  const lats = sorted.map((i) => i.lat), lngs = sorted.map((i) => i.lng);
-  const minLat = lats.length ? Math.min(...lats) : 26.4, maxLat = lats.length ? Math.max(...lats) : 26.5;
-  const minLng = lngs.length ? Math.min(...lngs) : 127.7, maxLng = lngs.length ? Math.max(...lngs) : 127.8;
-  const latRange = Math.max(maxLat - minLat, 0.01), lngRange = Math.max(maxLng - minLng, 0.01);
-  const projected = sorted.map((it) => ({
-    ...it,
-    px: 10 + ((it.lng - minLng) / lngRange) * 80,
-    py: 16 + ((maxLat - it.lat) / latRange) * 58,
-  }));
-  const selected = projected.find((p) => p.id === selectedId) || projected[projected.length - 1] || null;
-
-  const tagGroups = allTags
-    .map((tag) => ({ tag, group: items.filter((it) => it.tags.includes(tag)).sort((a, b) => a.ts - b.ts) }))
-    .filter((g) => g.group.length > 0);
-
-  return (
-    <div style={{ minHeight: "100vh" }}>
-      <div className="intro">
-        <div className="eyebrow">Prototype ― tap to try</div>
-        <h1>あしあと</h1>
-        <p className="note">
-          カメラ／位置情報の使用許可を求めることがあります。許可されない場合はデモ用のダミー映像・座標で動作します。
-          <button className="reset-link" onClick={resetDemo}><IconRotate size={11} style={{ marginRight: 4, verticalAlign: -2 }} />リセット</button>
-        </p>
-      </div>
-
-      <div className="phone">
-        <div className="notch" />
-        <div className="screen">
-
-          {screen === "camera" && (
-            <div className="s-camera">
-              {streamOk ? (
-                <video ref={videoRef} muted playsInline className="cam-video" />
-              ) : (
-                <div className="cam-fallback">
-                  <span>カメラ映像(この環境では利用不可・デモ表示)</span>
-                </div>
-              )}
-              <canvas ref={canvasRef} style={{ display: "none" }} />
-              <div className="cam-scrim" />
-
-              <div className="status-row">
-                <div className="gps-chip">
-                  {lastLoc ? (
-                    <>{lastLoc.lat.toFixed(4)} N<br />{lastLoc.lng.toFixed(4)} E {lastLoc.mocked ? "(推定)" : ""}</>
-                  ) : "取得中..."}
-                </div>
-              </div>
-
-              <div className="hint-row">
-                {isRecording ? (
-                  <span className="rec-live"><span className="dot" />REC {(recordProgress / 100 * 3).toFixed(1)}s / 3.0s</span>
-                ) : (
-                  <span>タップ：写真　長押し：動画3秒</span>
-                )}
-              </div>
-
-              <div className="shutter-row">
-                <div className={"last-shot" + (items.length && items[items.length - 1].type === "video" ? " video" : "")}
-                     style={items.length ? { backgroundImage: `url(${items[items.length - 1].src})` } : {}} />
-                <div className="shutter-outer"
-                     onPointerDown={handlePointerDown}
-                     onPointerUp={handlePointerUp}
-                     onPointerLeave={handlePointerUp}
-                     onContextMenu={(e) => e.preventDefault()}>
-                  <svg className="ring" viewBox="0 0 68 68">
-                    <circle cx="34" cy="34" r="30" stroke="rgba(255,255,255,.3)" strokeWidth="3" fill="none" />
-                    {isRecording && (
-                      <circle cx="34" cy="34" r="30" stroke="#DD3B2C" strokeWidth="3" fill="none"
-                        strokeDasharray={`${(recordProgress / 100) * RING_C} ${RING_C}`}
-                        strokeLinecap="round" transform="rotate(-90 34 34)" />
-                    )}
-                  </svg>
-                  <div className={"shutter-inner" + (isRecording ? " video" : "")} />
-                </div>
-                <div className="flip-icon" />
-              </div>
-            </div>
-          )}
-
-          {screen === "tag" && pending && (
-            <div className="s-tag">
-              <button className="back-btn" onClick={discardPending}><IconChevronLeft size={16} /></button>
-              <div className="shot-top">
-                {pending.type === "video" && pending.videoUrl ? (
-                  <video src={pending.videoUrl} poster={pending.src} controls playsInline className="tag-video" />
-                ) : (
-                  <img src={pending.src} alt="" className="tag-img" />
-                )}
-                {pending.type === "video" && (
-                  <div className="media-badge"><IconPlay size={9} fill="#fff" style={{ marginRight: 3 }} />0:03{pending.simulated ? "(デモ)" : ""}</div>
-                )}
-              </div>
-              <div className="meta-strip">
-                <span>{fmtDateTime(pending.ts)}</span>
-                <span>{pending.lat.toFixed(4)}, {pending.lng.toFixed(4)}{pending.mocked ? " (推定)" : ""}</span>
-              </div>
-              <div className="tag-body">
-                <div className="tag-label">タグを選択</div>
-                <div className="chips">
-                  {allTags.map((tag) => (
-                    <div key={tag} className={"chip" + (pending.tags.includes(tag) ? " active" : "")} onClick={() => toggleTag(tag)}>
-                      {tag}
-                    </div>
-                  ))}
-                  {showAddInput ? (
-                    <input
-                      autoFocus className="tag-input" value={newTagText}
-                      placeholder="新しいタグ"
-                      onChange={(e) => setNewTagText(e.target.value)}
-                      onKeyDown={(e) => { if (e.key === "Enter") commitNewTag(); if (e.key === "Escape") { setShowAddInput(false); setNewTagText(""); } }}
-                      onBlur={commitNewTag}
-                    />
-                  ) : (
-                    <div className="chip add" onClick={() => setShowAddInput(true)}><IconPlus size={11} style={{ marginRight: 3, verticalAlign: -1 }} />追加</div>
-                  )}
-                </div>
-              </div>
-              <div className="save-btn" onClick={savePending}>保存</div>
-            </div>
-          )}
-
-          {screen === "map" && (
-            <div className="s-map">
-              <div className="map-filter">
-                <div className={"fchip" + (filteredTags.length === 0 ? "" : " off")} onClick={() => setFilteredTags([])}>すべて</div>
-                {allTags.map((tag) => (
-                  <div key={tag} className={"fchip" + (filteredTags.includes(tag) ? "" : " off")} onClick={() => toggleFilterTag(tag)}>{tag}</div>
-                ))}
-              </div>
-
-              <div className="map-area">
-                <svg width="100%" height="100%" style={{ position: "absolute", inset: 0 }}>
-                  <polyline
-                    points={projected.map((p) => `${p.px}%,${p.py}%`).join(" ")}
-                    fill="none" stroke="#9AA39C" strokeWidth="2" strokeDasharray="1 8" strokeLinecap="round"
-                  />
-                </svg>
-                {projected.map((p) => (
-                  <div key={p.id}
-                       className={"pin" + (p.type === "video" ? " video" : "") + (p.id === selectedId ? " sel" : "")}
-                       style={{ left: `${p.px}%`, top: `${p.py}%` }}
-                       onClick={() => setSelectedId(p.id)}>
-                    <img src={p.src} alt="" />
-                  </div>
-                ))}
-                {projected.length === 0 && <div className="map-empty">この条件の記録はまだありません</div>}
-              </div>
-
-              <div className="sheet">
-                <div className="sheet-handle" />
-                {selected ? (
-                  <>
-                    <div className="sheet-title">{fmtDateShort(selected.ts)}　{selected.tags.join(" / ") || "タグなし"}</div>
-                    <div className="sheet-sub">{selected.lat.toFixed(4)}, {selected.lng.toFixed(4)} ・ {selected.type === "video" ? "動画 0:03" : "写真"}</div>
-                    <div className="film">
-                      {projected.map((p) => (
-                        <div key={p.id} className={"film-item" + (p.id === selected.id ? " sel" : "")} onClick={() => setSelectedId(p.id)}>
-                          <img src={p.src} alt="" />
-                          {p.type === "video" && <div className="dur">0:03</div>}
-                        </div>
-                      ))}
-                    </div>
-                  </>
-                ) : <div className="sheet-sub">ピンをタップすると詳細が表示されます</div>}
-              </div>
-            </div>
-          )}
-
-          {screen === "list" && (
-            <div className="s-list">
-              <div className="alb-head">
-                <div className="t">タグ一覧</div>
-                <div className="s">{tagGroups.length} tags ・ {items.length} items</div>
-              </div>
-              <div className="alb-grid">
-                {tagGroups.map(({ tag, group }) => (
-                  <div key={tag} className="album" onClick={() => { setFilteredTags([tag]); setScreen("map"); }}>
-                    <div className="album-top">
-                      <span className="name">{tag}</span>
-                      <span className="range">{fmtDateShort(group[0].ts)}
-                        {group.length > 1 ? `-${fmtDateShort(group[group.length - 1].ts)}` : ""} ・ {group.length}</span>
-                    </div>
-                    <div className="thumbs">
-                      {group.slice(0, 3).map((it) => (
-                        <div key={it.id} className="t-item">
-                          <img src={it.src} alt="" />
-                          {it.type === "video" && <div className="dur">0:03</div>}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {screen !== "tag" && (
-            <div className="tabbar">
-              <button className={screen === "camera" ? "active" : ""} onClick={() => setScreen("camera")}><IconCamera size={18} /></button>
-              <button className={screen === "map" ? "active" : ""} onClick={() => setScreen("map")}><IconMap size={18} /></button>
-              <button className={screen === "list" ? "active" : ""} onClick={() => setScreen("list")}><IconList size={18} /></button>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-ReactDOM.createRoot(document.getElementById("root")).render(<App />);
-</script>
-
-<script>
-  if ("serviceWorker" in navigator) {
-    window.addEventListener("load", () => {
-      navigator.serviceWorker.register("sw.js").catch(() => {});
-    });
-  }
-</script>
-
 <style>
   * { box-sizing:border-box; }
   body,html { margin:0; }
   body {
-    background:#F3F3F1; font-family:'Zen Kaku Gothic New', sans-serif; color:#17181A;
+    background:#F3F3F1; font-family:'Zen Kaku Gothic New', 'Hiragino Sans', sans-serif; color:#17181A;
     padding:36px 16px 60px; display:flex; flex-direction:column; align-items:center;
   }
+  .mono { font-family:'JetBrains Mono', monospace; }
   .intro { max-width:340px; text-align:center; margin-bottom:24px; }
   .eyebrow { font-family:'JetBrains Mono', monospace; font-size:10.5px; letter-spacing:.14em; color:#A8A9A4; text-transform:uppercase; margin-bottom:8px; }
   .intro h1 { font-weight:700; font-size:30px; margin:0 0 10px; letter-spacing:-.01em; }
   .note { font-size:11.5px; line-height:1.7; color:#6E6F6B; margin:0; }
   .reset-link { display:inline-flex; align-items:center; margin-left:6px; background:none; border:1px solid #D8D8D3; border-radius:6px; padding:3px 8px; font-size:10.5px; color:#454540; cursor:pointer; font-family:'JetBrains Mono', monospace; }
 
-  .phone { width:320px; height:660px; border-radius:28px; background:#0c0c0d; padding:10px; box-shadow:0 24px 48px -18px rgba(0,0,0,.35); position:relative; }
+  .phone { width:320px; max-width:92vw; height:660px; border-radius:28px; background:#0c0c0d; padding:10px; box-shadow:0 24px 48px -18px rgba(0,0,0,.35); position:relative; }
   .notch { position:absolute; top:10px; left:50%; transform:translateX(-50%); width:80px; height:16px; background:#0c0c0d; border-radius:9px; z-index:50; }
   .screen { width:100%; height:100%; border-radius:20px; overflow:hidden; position:relative; background:#fff; }
 
+  .s-camera, .s-tag, .s-map, .s-list { display:none; }
+  .s-camera.active { display:block; }
+  .s-tag.active { display:flex; flex-direction:column; }
+  .s-map.active { display:flex; flex-direction:column; }
+  .s-list.active { display:block; }
+
+  /* camera */
   .s-camera { position:absolute; inset:0; background:#111; }
-  .cam-video { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
-  .cam-fallback { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; background:linear-gradient(160deg,#2a2c2e,#111); }
+  .cam-video { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; background:#111; }
+  .cam-fallback { position:absolute; inset:0; display:none; align-items:center; justify-content:center; background:linear-gradient(160deg,#2a2c2e,#111); }
+  .cam-fallback.show { display:flex; }
   .cam-fallback span { color:rgba(255,255,255,.5); font-size:11px; max-width:200px; text-align:center; font-family:'JetBrains Mono', monospace; }
   .cam-scrim { position:absolute; inset:0; background:linear-gradient(180deg, rgba(0,0,0,.05) 0%, rgba(0,0,0,.55) 82%, rgba(0,0,0,.72) 100%); pointer-events:none; }
   .status-row { position:absolute; top:24px; left:14px; right:14px; z-index:5; display:flex; justify-content:flex-end; }
   .gps-chip { background:rgba(0,0,0,.45); backdrop-filter:blur(6px); border:1px solid rgba(255,255,255,.18); border-radius:6px; padding:6px 9px; font-size:10px; font-family:'JetBrains Mono', monospace; color:#EDEDEA; text-align:right; line-height:1.5; }
   .hint-row { position:absolute; top:66px; left:0; right:0; z-index:5; text-align:center; font-size:11px; color:rgba(255,255,255,.65); font-family:'JetBrains Mono', monospace; }
-  .rec-live { color:#fff; display:inline-flex; align-items:center; gap:6px; }
+  .rec-live { color:#fff; display:none; align-items:center; gap:6px; justify-content:center; }
+  .rec-live.show { display:inline-flex; }
+  .hint-static.hide { display:none; }
   .rec-live .dot { width:7px; height:7px; border-radius:50%; background:#DD3B2C; }
   .shutter-row { position:absolute; bottom:78px; left:0; right:0; z-index:5; display:flex; align-items:center; justify-content:center; gap:44px; }
   .last-shot { width:36px; height:36px; border-radius:6px; border:1.5px solid rgba(255,255,255,.7); background-size:cover; background-position:center; background-color:rgba(255,255,255,.15); position:relative; }
@@ -503,7 +61,8 @@ ReactDOM.createRoot(document.getElementById("root")).render(<App />);
   .shutter-inner.video { border-radius:14px; width:44px; height:44px; }
   .flip-icon { width:30px; height:30px; border-radius:50%; background:rgba(255,255,255,.14); border:1px solid rgba(255,255,255,.35); }
 
-  .s-tag { position:absolute; inset:0; background:#fff; display:flex; flex-direction:column; }
+  /* tag screen */
+  .s-tag { position:absolute; inset:0; background:#fff; }
   .back-btn { position:absolute; top:14px; left:14px; z-index:6; width:30px; height:30px; border-radius:50%; background:rgba(0,0,0,.4); border:none; color:#fff; display:flex; align-items:center; justify-content:center; cursor:pointer; }
   .shot-top { height:38%; width:100%; position:relative; background:#000; flex-shrink:0; }
   .tag-img, .tag-video { width:100%; height:100%; object-fit:cover; display:block; }
@@ -518,7 +77,8 @@ ReactDOM.createRoot(document.getElementById("root")).render(<App />);
   .tag-input { font-size:12px; padding:6px 10px; border-radius:6px; border:1px solid #17181A; outline:none; width:100px; font-family:'Zen Kaku Gothic New', sans-serif; }
   .save-btn { margin:16px 20px 20px; height:46px; border-radius:8px; background:#17181A; color:#fff; display:flex; align-items:center; justify-content:center; font-size:13.5px; cursor:pointer; flex-shrink:0; }
 
-  .s-map { position:absolute; top:0; left:0; right:0; bottom:58px; display:flex; flex-direction:column; background:#E7E6E1; }
+  /* map */
+  .s-map { position:absolute; top:0; left:0; right:0; bottom:58px; background:#E7E6E1; }
   .map-filter { position:absolute; top:16px; left:14px; right:14px; z-index:6; display:flex; gap:7px; overflow-x:auto; }
   .fchip { font-size:10.5px; padding:6px 10px; border-radius:6px; background:#17181A; color:#fff; white-space:nowrap; cursor:pointer; }
   .fchip.off { background:#fff; color:#6E6F6B; border:1px solid rgba(23,24,26,.13); }
@@ -528,7 +88,7 @@ ReactDOM.createRoot(document.getElementById("root")).render(<App />);
   .pin.sel { border-color:#DD3B2C; box-shadow:0 0 0 3px rgba(221,59,44,.25); }
   .pin img { width:100%; height:100%; object-fit:cover; display:block; opacity:.92; }
   .pin.video::after { content:""; position:absolute; inset:0; margin:auto; width:0; height:0; border-top:4px solid transparent; border-bottom:4px solid transparent; border-left:7px solid #fff; }
-  .sheet { background:#fff; border-radius:16px 16px 0 0; box-shadow:0 -8px 20px rgba(0,0,0,.08); padding:12px 18px 14px; flex-shrink:0; min-height:118px; }
+  .sheet { background:#fff; border-radius:16px 16px 0 0; box-shadow:0 -8px 20px rgba(0,0,0,.08); padding:12px 18px 14px; flex-shrink:0; min-height:118px; position:absolute; left:0; right:0; bottom:0; }
   .sheet-handle { width:34px; height:3px; background:rgba(23,24,26,.13); border-radius:2px; margin:0 auto 10px; }
   .sheet-title { font-size:12.5px; font-weight:700; margin-bottom:2px; }
   .sheet-sub { font-family:'JetBrains Mono', monospace; font-size:10px; color:#6E6F6B; margin-bottom:10px; }
@@ -538,6 +98,7 @@ ReactDOM.createRoot(document.getElementById("root")).render(<App />);
   .film-item img { width:100%; height:100%; object-fit:cover; }
   .dur { position:absolute; bottom:1px; right:2px; font-family:'JetBrains Mono', monospace; font-size:6.5px; color:#fff; background:rgba(0,0,0,.55); padding:0 2px; border-radius:2px; }
 
+  /* list */
   .s-list { position:absolute; top:0; left:0; right:0; bottom:58px; background:#fff; overflow:auto; }
   .alb-head { padding:26px 20px 4px; }
   .alb-head .t { font-size:16px; font-weight:700; }
@@ -547,17 +108,518 @@ ReactDOM.createRoot(document.getElementById("root")).render(<App />);
   .album-top { display:flex; justify-content:space-between; align-items:baseline; margin-bottom:10px; }
   .album .name { font-size:13.5px; font-weight:700; }
   .album .range { font-family:'JetBrains Mono', monospace; font-size:9.5px; color:#6E6F6B; }
-  .thumbs, .t-item { display:flex; }
-  .thumbs { gap:6px; }
+  .thumbs { display:flex; gap:6px; }
   .t-item { position:relative; width:42px; height:42px; border-radius:6px; overflow:hidden; }
   .t-item img { width:100%; height:100%; object-fit:cover; }
 
-  .tabbar { position:absolute; left:0; right:0; bottom:0; height:58px; background:rgba(255,255,255,.92); backdrop-filter:blur(8px); border-top:1px solid rgba(23,24,26,.1); display:flex; }
+  /* tabbar */
+  .tabbar { position:absolute; left:0; right:0; bottom:0; height:58px; background:rgba(255,255,255,.92); backdrop-filter:blur(8px); border-top:1px solid rgba(23,24,26,.1); display:flex; z-index:20; }
+  .tabbar.hidden { display:none; }
   .tabbar button { flex:1; border:none; background:none; display:flex; align-items:center; justify-content:center; color:#A8A9A4; cursor:pointer; }
   .tabbar button.active { color:#17181A; }
-  .s-camera ~ .tabbar { background:rgba(0,0,0,.35); border-top:1px solid rgba(255,255,255,.12); }
-  .s-camera ~ .tabbar button { color:rgba(255,255,255,.55); }
-  .s-camera ~ .tabbar button.active { color:#fff; }
+  .tabbar.dark { background:rgba(0,0,0,.35); border-top:1px solid rgba(255,255,255,.12); }
+  .tabbar.dark button { color:rgba(255,255,255,.55); }
+  .tabbar.dark button.active { color:#fff; }
 </style>
+</head>
+<body>
+
+<div class="intro">
+  <div class="eyebrow">Prototype ― tap to try</div>
+  <h1>あしあと</h1>
+  <p class="note">
+    カメラ／位置情報の使用許可を求めることがあります。許可されない場合はデモ用のダミー映像・座標で動作します。
+    <button class="reset-link" data-action="reset">↺ リセット</button>
+  </p>
+</div>
+
+<div class="phone">
+  <div class="notch"></div>
+  <div class="screen">
+
+    <!-- CAMERA -->
+    <div id="screen-camera" class="s-camera active">
+      <video id="cam-video" class="cam-video" muted playsinline autoplay></video>
+      <div id="cam-fallback" class="cam-fallback"><span>カメラ映像(この環境では利用不可・デモ表示)</span></div>
+      <canvas id="cam-canvas" style="display:none"></canvas>
+      <div class="cam-scrim"></div>
+
+      <div class="status-row"><div class="gps-chip" id="gps-text">取得中...</div></div>
+
+      <div class="hint-row">
+        <span class="hint-static" id="hint-static">タップ：写真　長押し：動画3秒</span>
+        <span class="rec-live" id="rec-live"><span class="dot"></span><span id="rec-time">REC 0.0s / 3.0s</span></span>
+      </div>
+
+      <div class="shutter-row">
+        <div class="last-shot" id="last-shot"></div>
+        <div class="shutter-outer" id="shutter-outer">
+          <svg class="ring" viewBox="0 0 68 68">
+            <circle cx="34" cy="34" r="30" stroke="rgba(255,255,255,.3)" stroke-width="3" fill="none"/>
+            <circle id="ring-progress" cx="34" cy="34" r="30" stroke="#DD3B2C" stroke-width="3" fill="none"
+              stroke-dasharray="0 188.5" stroke-linecap="round" transform="rotate(-90 34 34)"/>
+          </svg>
+          <div class="shutter-inner" id="shutter-inner"></div>
+        </div>
+        <div class="flip-icon"></div>
+      </div>
+    </div>
+
+    <!-- TAG -->
+    <div id="screen-tag" class="s-tag">
+      <button class="back-btn" data-action="discard">‹</button>
+      <div class="shot-top" id="tag-shot-top"></div>
+      <div class="meta-strip" id="tag-meta"></div>
+      <div class="tag-body">
+        <div class="tag-label">タグを選択</div>
+        <div class="chips" id="tag-chips"></div>
+      </div>
+      <div class="save-btn" data-action="save">保存</div>
+    </div>
+
+    <!-- MAP -->
+    <div id="screen-map" class="s-map">
+      <div class="map-filter" id="map-filter"></div>
+      <div class="map-area">
+        <svg id="map-svg" width="100%" height="100%" style="position:absolute;inset:0;"></svg>
+        <div id="map-pins"></div>
+        <div class="map-empty" id="map-empty" style="display:none">この条件の記録はまだありません</div>
+      </div>
+      <div class="sheet">
+        <div class="sheet-handle"></div>
+        <div id="map-sheet-content"></div>
+      </div>
+    </div>
+
+    <!-- LIST -->
+    <div id="screen-list" class="s-list">
+      <div class="alb-head">
+        <div class="t">タグ一覧</div>
+        <div class="s" id="list-summary"></div>
+      </div>
+      <div class="alb-grid" id="list-grid"></div>
+    </div>
+
+    <div class="tabbar" id="tabbar">
+      <button data-action="show" data-screen="camera">📷</button>
+      <button data-action="show" data-screen="map">🗺</button>
+      <button data-action="show" data-screen="list">☰</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  var RECORD_DURATION = 3000;
+  var HOLD_THRESHOLD = 320;
+  var RING_C = 2 * Math.PI * 30;
+
+  var seedItems = [
+    { id: "seed1", type: "photo", src: "https://picsum.photos/seed/oki1/400/400", videoUrl: null, duration: 0,
+      lat: 26.4200, lng: 127.7400, ts: new Date("2026-08-10T10:15:00"), tags: ["沖縄旅行"], mocked: true },
+    { id: "seed2", type: "video", src: "https://picsum.photos/seed/oki2/400/400", videoUrl: null, duration: 3,
+      lat: 26.3820, lng: 127.7900, ts: new Date("2026-08-11T13:40:00"), tags: ["沖縄旅行"], mocked: true, simulated: true },
+    { id: "seed3", type: "photo", src: "https://picsum.photos/seed/oki3/400/400", videoUrl: null, duration: 0,
+      lat: 26.3500, lng: 127.8620, ts: new Date("2026-08-12T09:05:00"), tags: ["沖縄旅行"], mocked: true },
+    { id: "seed4", type: "photo", src: "https://picsum.photos/seed/date1/400/400", videoUrl: null, duration: 0,
+      lat: 26.2120, lng: 127.6800, ts: new Date("2026-08-20T18:30:00"), tags: ["8月デート"], mocked: true }
+  ];
+
+  var state = {
+    screen: "camera",
+    items: seedItems.slice(),
+    allTags: ["沖縄旅行", "8月デート"],
+    pending: null,
+    streamOk: false,
+    isRecording: false,
+    lastLoc: { lat: 26.4500, lng: 127.7600, mocked: true },
+    filteredTags: [],
+    selectedId: null,
+    showAddInput: false,
+    lastTags: []
+  };
+
+  var mediaStream = null;
+  var pressTimer = null;
+  var recordInterval = null;
+  var recordStart = 0;
+
+  function pad(n) { return String(n).padStart(2, "0"); }
+  function fmtDateTime(d) { return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()) + " " + pad(d.getHours()) + ":" + pad(d.getMinutes()); }
+  function fmtDateShort(d) { return pad(d.getMonth() + 1) + "." + pad(d.getDate()); }
+  function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
+
+  /* ---------- camera lifecycle ---------- */
+  function startCamera() {
+    var video = document.getElementById("cam-video");
+    var fallback = document.getElementById("cam-fallback");
+    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+      navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false })
+        .then(function (stream) {
+          mediaStream = stream;
+          video.srcObject = stream;
+          video.play().catch(function () {});
+          state.streamOk = true;
+          fallback.classList.remove("show");
+        })
+        .catch(function () {
+          state.streamOk = false;
+          fallback.classList.add("show");
+        });
+    } else {
+      state.streamOk = false;
+      fallback.classList.add("show");
+    }
+  }
+  function stopCamera() {
+    if (mediaStream) { mediaStream.getTracks().forEach(function (t) { t.stop(); }); mediaStream = null; }
+    state.streamOk = false;
+  }
+
+  /* ---------- location ---------- */
+  function mockNearLast() {
+    function j() { return (Math.random() - 0.5) * 0.02; }
+    return { lat: state.lastLoc.lat + j(), lng: state.lastLoc.lng + j(), mocked: true };
+  }
+  function fetchFreshLocation(cb) {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        function (pos) {
+          var loc = { lat: pos.coords.latitude, lng: pos.coords.longitude, mocked: false };
+          state.lastLoc = loc; cb(loc);
+        },
+        function () { var loc = mockNearLast(); state.lastLoc = loc; cb(loc); },
+        { enableHighAccuracy: true, timeout: 4000, maximumAge: 2000 }
+      );
+    } else {
+      var loc = mockNearLast(); state.lastLoc = loc; cb(loc);
+    }
+  }
+
+  /* ---------- capture ---------- */
+  function capturePosterFrame() {
+    var video = document.getElementById("cam-video");
+    var canvas = document.getElementById("cam-canvas");
+    if (state.streamOk && video.videoWidth) {
+      canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+      var ctx = canvas.getContext("2d");
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      try { return canvas.toDataURL("image/jpeg", 0.85); } catch (e) {}
+    }
+    return "https://picsum.photos/seed/" + Date.now() + "/400/400";
+  }
+
+  function finalizeCapture(partial) {
+    fetchFreshLocation(function (loc) {
+      var item = Object.assign({
+        id: "m" + Date.now() + Math.random().toString(36).slice(2, 6),
+        ts: new Date(),
+        lat: loc.lat, lng: loc.lng, mocked: loc.mocked,
+        tags: state.lastTags.slice()
+      }, partial);
+      state.pending = item;
+      showScreen("tag");
+    });
+  }
+
+  function takePhoto() {
+    var src = capturePosterFrame();
+    finalizeCapture({ type: "photo", src: src, videoUrl: null, duration: 0, simulated: !state.streamOk });
+  }
+
+  function startRecording() {
+    state.isRecording = true;
+    updateHintRow();
+    document.getElementById("shutter-inner").classList.add("video");
+    var poster = capturePosterFrame();
+    recordStart = Date.now();
+    var ring = document.getElementById("ring-progress");
+    var recTime = document.getElementById("rec-time");
+    recordInterval = setInterval(function () {
+      var elapsed = Date.now() - recordStart;
+      var pct = Math.min(100, (elapsed / RECORD_DURATION) * 100);
+      ring.setAttribute("stroke-dasharray", (pct / 100 * RING_C) + " " + RING_C);
+      recTime.textContent = "REC " + (elapsed / 1000).toFixed(1) + "s / 3.0s";
+    }, 30);
+
+    var recorder = null, chunks = [];
+    if (state.streamOk && window.MediaRecorder && mediaStream) {
+      try {
+        recorder = new MediaRecorder(mediaStream);
+        recorder.ondataavailable = function (e) { if (e.data && e.data.size > 0) chunks.push(e.data); };
+        recorder.start();
+      } catch (e) { recorder = null; }
+    }
+
+    setTimeout(function () {
+      clearInterval(recordInterval);
+      if (recorder && recorder.state !== "inactive") {
+        recorder.onstop = function () {
+          var blob = new Blob(chunks, { type: "video/webm" });
+          var url = URL.createObjectURL(blob);
+          finalizeCapture({ type: "video", src: poster, videoUrl: url, duration: 3, simulated: false });
+        };
+        recorder.stop();
+      } else {
+        finalizeCapture({ type: "video", src: poster, videoUrl: null, duration: 3, simulated: true });
+      }
+      state.isRecording = false;
+      document.getElementById("shutter-inner").classList.remove("video");
+      ring.setAttribute("stroke-dasharray", "0 " + RING_C);
+      updateHintRow();
+    }, RECORD_DURATION);
+  }
+
+  function updateHintRow() {
+    document.getElementById("hint-static").classList.toggle("hide", state.isRecording);
+    document.getElementById("rec-live").classList.toggle("show", state.isRecording);
+  }
+
+  function updateGpsChip() {
+    var el = document.getElementById("gps-text");
+    if (state.lastLoc) {
+      el.innerHTML = state.lastLoc.lat.toFixed(4) + " N<br>" + state.lastLoc.lng.toFixed(4) + " E " + (state.lastLoc.mocked ? "(推定)" : "");
+    }
+  }
+  function updateLastShot() {
+    var el = document.getElementById("last-shot");
+    if (state.items.length) {
+      var last = state.items[state.items.length - 1];
+      el.style.backgroundImage = "url(" + last.src + ")";
+      el.classList.toggle("video", last.type === "video");
+    }
+  }
+
+  /* ---------- pointer handlers (shutter) ---------- */
+  function onPointerDown(e) {
+    e.preventDefault();
+    if (state.isRecording || state.pending) return;
+    pressTimer = setTimeout(function () { pressTimer = null; startRecording(); }, HOLD_THRESHOLD);
+  }
+  function onPointerUp() {
+    if (pressTimer) {
+      clearTimeout(pressTimer); pressTimer = null;
+      if (!state.isRecording) takePhoto();
+    }
+  }
+
+  /* ---------- tag screen ---------- */
+  function renderTagScreen() {
+    var p = state.pending;
+    if (!p) return;
+    var mediaHtml = "";
+    if (p.type === "video" && p.videoUrl) {
+      mediaHtml = '<video src="' + p.videoUrl + '" poster="' + p.src + '" controls playsinline class="tag-video"></video>';
+    } else {
+      mediaHtml = '<img src="' + p.src + '" alt="" class="tag-img">';
+    }
+    if (p.type === "video") {
+      mediaHtml += '<div class="media-badge">▶ 0:03' + (p.simulated ? "(デモ)" : "") + "</div>";
+    }
+    document.getElementById("tag-shot-top").innerHTML = mediaHtml;
+
+    document.getElementById("tag-meta").innerHTML =
+      "<span>" + fmtDateTime(p.ts) + "</span><span>" + p.lat.toFixed(4) + ", " + p.lng.toFixed(4) + (p.mocked ? " (推定)" : "") + "</span>";
+
+    var chipsHtml = state.allTags.map(function (tag) {
+      var active = p.tags.indexOf(tag) !== -1;
+      return '<div class="chip' + (active ? " active" : "") + '" data-action="toggle-tag" data-tag="' + esc(tag) + '">' + esc(tag) + "</div>";
+    }).join("");
+
+    if (state.showAddInput) {
+      chipsHtml += '<input id="new-tag-input" class="tag-input" placeholder="新しいタグ" autofocus>';
+    } else {
+      chipsHtml += '<div class="chip add" data-action="add-tag-open">＋ 追加</div>';
+    }
+    document.getElementById("tag-chips").innerHTML = chipsHtml;
+
+    if (state.showAddInput) {
+      var input = document.getElementById("new-tag-input");
+      input.focus();
+      input.addEventListener("keydown", function (e) {
+        if (e.key === "Enter") commitNewTag(input.value);
+        if (e.key === "Escape") { state.showAddInput = false; renderTagScreen(); }
+      });
+      input.addEventListener("blur", function () { commitNewTag(input.value); });
+    }
+  }
+  function toggleTag(tag) {
+    var idx = state.pending.tags.indexOf(tag);
+    if (idx === -1) state.pending.tags.push(tag); else state.pending.tags.splice(idx, 1);
+    renderTagScreen();
+  }
+  function commitNewTag(text) {
+    var t = (text || "").trim();
+    if (t) {
+      if (state.allTags.indexOf(t) === -1) state.allTags.push(t);
+      if (state.pending.tags.indexOf(t) === -1) state.pending.tags.push(t);
+    }
+    state.showAddInput = false;
+    renderTagScreen();
+  }
+  function savePending() {
+    state.lastTags = state.pending.tags.slice();
+    state.items.push(state.pending);
+    state.pending = null;
+    showScreen("map");
+  }
+  function discardPending() {
+    if (state.pending && state.pending.videoUrl) URL.revokeObjectURL(state.pending.videoUrl);
+    state.pending = null;
+    showScreen("camera");
+  }
+
+  /* ---------- map screen ---------- */
+  function getProjected() {
+    var filtered = state.items.filter(function (it) {
+      return state.filteredTags.length === 0 || it.tags.some(function (t) { return state.filteredTags.indexOf(t) !== -1; });
+    });
+    var sorted = filtered.slice().sort(function (a, b) { return a.ts - b.ts; });
+    var lats = sorted.map(function (i) { return i.lat; });
+    var lngs = sorted.map(function (i) { return i.lng; });
+    var minLat = lats.length ? Math.min.apply(null, lats) : 26.4, maxLat = lats.length ? Math.max.apply(null, lats) : 26.5;
+    var minLng = lngs.length ? Math.min.apply(null, lngs) : 127.7, maxLng = lngs.length ? Math.max.apply(null, lngs) : 127.8;
+    var latRange = Math.max(maxLat - minLat, 0.01), lngRange = Math.max(maxLng - minLng, 0.01);
+    return sorted.map(function (it) {
+      return Object.assign({}, it, {
+        px: 10 + ((it.lng - minLng) / lngRange) * 80,
+        py: 16 + ((maxLat - it.lat) / latRange) * 58
+      });
+    });
+  }
+
+  function renderMapScreen() {
+    var filterHtml = '<div class="fchip' + (state.filteredTags.length === 0 ? "" : " off") + '" data-action="filter-all">すべて</div>';
+    filterHtml += state.allTags.map(function (tag) {
+      var on = state.filteredTags.indexOf(tag) !== -1;
+      return '<div class="fchip' + (on ? "" : " off") + '" data-action="toggle-filter" data-tag="' + esc(tag) + '">' + esc(tag) + "</div>";
+    }).join("");
+    document.getElementById("map-filter").innerHTML = filterHtml;
+
+    var projected = getProjected();
+    document.getElementById("map-empty").style.display = projected.length ? "none" : "flex";
+
+    var svg = document.getElementById("map-svg");
+    var points = projected.map(function (p) { return p.px + "%," + p.py + "%"; }).join(" ");
+    svg.innerHTML = '<polyline points="' + points + '" fill="none" stroke="#9AA39C" stroke-width="2" stroke-dasharray="1 8" stroke-linecap="round"/>';
+
+    if (!state.selectedId || !projected.some(function (p) { return p.id === state.selectedId; })) {
+      state.selectedId = projected.length ? projected[projected.length - 1].id : null;
+    }
+
+    document.getElementById("map-pins").innerHTML = projected.map(function (p) {
+      var cls = "pin" + (p.type === "video" ? " video" : "") + (p.id === state.selectedId ? " sel" : "");
+      return '<div class="' + cls + '" data-action="select-pin" data-id="' + p.id + '" style="left:' + p.px + '%;top:' + p.py + '%"><img src="' + p.src + '" alt=""></div>';
+    }).join("");
+
+    var sel = projected.find(function (p) { return p.id === state.selectedId; });
+    var sheetEl = document.getElementById("map-sheet-content");
+    if (sel) {
+      var filmHtml = projected.map(function (p) {
+        var cls = "film-item" + (p.id === sel.id ? " sel" : "");
+        var dur = p.type === "video" ? '<div class="dur">0:03</div>' : "";
+        return '<div class="' + cls + '" data-action="select-pin" data-id="' + p.id + '"><img src="' + p.src + '" alt="">' + dur + "</div>";
+      }).join("");
+      sheetEl.innerHTML =
+        '<div class="sheet-title">' + fmtDateShort(sel.ts) + "　" + esc(sel.tags.join(" / ") || "タグなし") + '</div>' +
+        '<div class="sheet-sub">' + sel.lat.toFixed(4) + ", " + sel.lng.toFixed(4) + " ・ " + (sel.type === "video" ? "動画 0:03" : "写真") + '</div>' +
+        '<div class="film">' + filmHtml + "</div>";
+    } else {
+      sheetEl.innerHTML = '<div class="sheet-sub">ピンをタップすると詳細が表示されます</div>';
+    }
+  }
+
+  /* ---------- list screen ---------- */
+  function renderListScreen() {
+    var groups = state.allTags.map(function (tag) {
+      var group = state.items.filter(function (it) { return it.tags.indexOf(tag) !== -1; }).sort(function (a, b) { return a.ts - b.ts; });
+      return { tag: tag, group: group };
+    }).filter(function (g) { return g.group.length > 0; });
+
+    document.getElementById("list-summary").textContent = groups.length + " tags ・ " + state.items.length + " items";
+
+    document.getElementById("list-grid").innerHTML = groups.map(function (g) {
+      var range = fmtDateShort(g.group[0].ts) + (g.group.length > 1 ? "-" + fmtDateShort(g.group[g.group.length - 1].ts) : "") + " ・ " + g.group.length;
+      var thumbs = g.group.slice(0, 3).map(function (it) {
+        var dur = it.type === "video" ? '<div class="dur">0:03</div>' : "";
+        return '<div class="t-item"><img src="' + it.src + '" alt="">' + dur + "</div>";
+      }).join("");
+      return '<div class="album" data-action="open-album" data-tag="' + esc(g.tag) + '">' +
+        '<div class="album-top"><span class="name">' + esc(g.tag) + '</span><span class="range">' + range + "</span></div>" +
+        '<div class="thumbs">' + thumbs + "</div></div>";
+    }).join("");
+  }
+
+  /* ---------- screen switching ---------- */
+  function showScreen(name) {
+    state.screen = name;
+    ["camera", "tag", "map", "list"].forEach(function (s) {
+      document.getElementById("screen-" + s).classList.toggle("active", s === name);
+    });
+    var tabbar = document.getElementById("tabbar");
+    tabbar.classList.toggle("hidden", name === "tag");
+    tabbar.classList.toggle("dark", name === "camera");
+    Array.prototype.forEach.call(tabbar.querySelectorAll("button"), function (b) {
+      b.classList.toggle("active", b.dataset.screen === name);
+    });
+
+    if (name === "camera") { startCamera(); updateGpsChip(); updateLastShot(); }
+    else { stopCamera(); }
+
+    if (name === "tag") renderTagScreen();
+    if (name === "map") renderMapScreen();
+    if (name === "list") renderListScreen();
+  }
+
+  function resetDemo() {
+    state.items = seedItems.slice();
+    state.allTags = ["沖縄旅行", "8月デート"];
+    state.filteredTags = [];
+    state.selectedId = null;
+    state.pending = null;
+    showScreen("camera");
+  }
+
+  /* ---------- event delegation ---------- */
+  document.addEventListener("click", function (e) {
+    var el = e.target.closest("[data-action]");
+    if (!el) return;
+    var action = el.dataset.action;
+    if (action === "show") showScreen(el.dataset.screen);
+    else if (action === "reset") resetDemo();
+    else if (action === "discard") discardPending();
+    else if (action === "save") savePending();
+    else if (action === "toggle-tag") toggleTag(el.dataset.tag);
+    else if (action === "add-tag-open") { state.showAddInput = true; renderTagScreen(); }
+    else if (action === "filter-all") { state.filteredTags = []; state.selectedId = null; renderMapScreen(); }
+    else if (action === "toggle-filter") {
+      var tag = el.dataset.tag;
+      var idx = state.filteredTags.indexOf(tag);
+      if (idx === -1) state.filteredTags.push(tag); else state.filteredTags.splice(idx, 1);
+      state.selectedId = null;
+      renderMapScreen();
+    }
+    else if (action === "select-pin") { state.selectedId = el.dataset.id; renderMapScreen(); }
+    else if (action === "open-album") { state.filteredTags = [el.dataset.tag]; showScreen("map"); }
+  });
+
+  var shutter = document.getElementById("shutter-outer");
+  shutter.addEventListener("pointerdown", onPointerDown);
+  shutter.addEventListener("pointerup", onPointerUp);
+  shutter.addEventListener("pointerleave", onPointerUp);
+  shutter.addEventListener("contextmenu", function (e) { e.preventDefault(); });
+
+  /* ---------- init ---------- */
+  showScreen("camera");
+
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", function () {
+      navigator.serviceWorker.register("sw.js").catch(function () {});
+    });
+  }
+})();
+</script>
 </body>
 </html>

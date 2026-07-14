@@ -1,9 +1,9 @@
-const CACHE_NAME = "ashiato-v1";
+const CACHE_NAME = "ashiato-v2";
 const CORE_ASSETS = [
   "./index.html",
   "./manifest.json",
-  "./icons/icon-192.png",
-  "./icons/icon-512.png",
+  "./icon-192.png",
+  "./icon-512.png",
 ];
 
 self.addEventListener("install", (event) => {
@@ -22,7 +22,6 @@ self.addEventListener("activate", (event) => {
   self.clients.claim();
 });
 
-// network-first for CDN scripts (react/babel), cache-first for local core assets
 self.addEventListener("fetch", (event) => {
   const url = event.request.url;
   const isLocal = url.startsWith(self.location.origin);
